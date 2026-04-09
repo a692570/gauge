@@ -1,11 +1,15 @@
 # gauge
 
-A status bar for Claude Code that shows session usage, weekly limits, and context window consumption in real time.
+A live status bar for Claude Code. Know your session, weekly budget, and context window at a glance — without opening a browser tab or guessing.
+
+![gauge status bar preview](preview.svg)
 
 ```
-Session ━━── 8% 12m | Weekly ━━── 5% R:Tue 9am | Sonnet ━━── 8% | Off-Peak ✓
-Context ━━━━── 60% 40k • 40% 160k left
+Session ──────────── 8% 4h 52m | Weekly ━─────────── 5% R:Tue 9am | Sonnet ━─────────── 8% | Off-Peak ✓
+Context ━━━───────── 29% 58k • 71% 142k left
 ```
+
+Line 1 tracks session burn, weekly rolling window, and Sonnet model usage — with reset times and a peak-hours indicator. Line 2 shows how deep into the context window the current conversation is.
 
 ## Install
 
@@ -15,38 +19,32 @@ python3 ~/.gauge/claude_status.py --install
 python3 ~/.gauge/claude_status.py --context-format full
 ```
 
-Restart Claude Code. The status bar appears automatically on every interaction.
+Restart Claude Code. The bar shows up automatically on every interaction.
 
 Requires Python 3.12+. On macOS: `brew install python@3.13`
 
-## What it shows
-
-**Line 1** — usage bars for the current 5-hour session, 7-day rolling window, and Sonnet model limit. Includes reset times and an off-peak indicator.
-
-**Line 2** — context window bar showing tokens used and remaining in the current conversation.
-
-## Configuration
+## Configure
 
 ```bash
-# Themes
+# Themes (default, ocean, sunset, ember, frost, candy, neon, pride, mono, rainbow)
 python3 ~/.gauge/claude_status.py --theme ember
 
 # Bar style
 python3 ~/.gauge/claude_status.py --bar-style dot
 
-# Peak hours window (Anthropic 2x consumption period)
+# Peak hours window (the 2x token consumption period)
 python3 ~/.gauge/claude_status.py --peak-hours 13:00-19:00
 
-# Hide sections
+# Hide sections you don't need
 python3 ~/.gauge/claude_status.py --hide cost
 python3 ~/.gauge/claude_status.py --hide lines
 ```
 
-Available themes: `default`, `ocean`, `sunset`, `ember`, `frost`, `candy`, `neon`, `pride`, `mono`, `rainbow`
+## Why it exists
 
-## Requirements
+Claude Code's session and weekly limits reset quietly. Running hard into a wall mid-conversation — then waiting for a reset — breaks flow. Gauge surfaces the numbers so you can pace yourself without thinking about it.
 
-Claude Code with a Pro or Max subscription. The status bar reads usage data from Claude Code's session API — no separate API key needed.
+The context bar is the other half. Long sessions drift toward the limit without any warning. Seeing `29% 58k • 71% 142k left` is a lot more actionable than noticing the model getting weird.
 
 ## License
 

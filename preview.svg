@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="130" viewBox="0 0 900 130">
+<defs><style>text { font-family: "JetBrains Mono","Fira Code","SF Mono","Menlo",monospace; }</style></defs>
+<rect width="900" height="130" rx="10" ry="10" fill="#1e1e2e"/>
+<rect width="900" height="32" rx="10" ry="10" fill="#181825"/>
+<rect y="22" width="900" height="10" fill="#181825"/>
+<circle cx="18" cy="16" r="5.5" fill="#f38ba8"/>
+<circle cx="38" cy="16" r="5.5" fill="#f9e2af"/>
+<circle cx="58" cy="16" r="5.5" fill="#a6e3a1"/>
+<text x="450" y="21" text-anchor="middle" font-size="11.5" fill="#6c7086">gauge — claude code status bar</text>
+<line x1="0" y1="32" x2="900" y2="32" stroke="#313244" stroke-width="1"/>
+<text x="20.0" y="52" font-size="12.5" fill="#f9e2af">Session </text>
+<text x="80.0" y="52" font-size="12.5" fill="#45475a">────────────</text>
+<text x="170.0" y="52" font-size="12.5" fill="#f9e2af"> 1% 4h 35m | Weekly </text>
+<text x="320.0" y="52" font-size="12.5" fill="#ffd700">━</text>
+<text x="327.5" y="52" font-size="12.5" fill="#45475a">───────────</text>
+<text x="410.0" y="52" font-size="12.5" fill="#f9e2af"> 5% R:Tue 9am | Sonnet </text>
+<text x="582.5" y="52" font-size="12.5" fill="#ffd700">━</text>
+<text x="590.0" y="52" font-size="12.5" fill="#45475a">───────────</text>
+<text x="672.5" y="52" font-size="12.5" fill="#f9e2af"> 8% | </text>
+<text x="717.5" y="52" font-size="12.5" fill="#a6e3a1">Off-Peak ✓</text>
+<text x="792.5" y="52" font-size="12.5" fill="#f9e2af"> | Sonnet 4</text>
+<text x="20.0" y="75" font-size="12.5" fill="#cdd6f4">Context </text>
+<text x="80.0" y="75" font-size="12.5" fill="#ffd700">━━━</text>
+<text x="102.5" y="75" font-size="12.5" fill="#45475a">─────────</text>
+<text x="170.0" y="75" font-size="12.5" fill="#f9e2af"> 29% 71k • 71% 129k left</text>
+</svg>
