@@ -977,6 +977,26 @@ def _cleanup_hooks():
 
 
 # ---------------------------------------------------------------------------
+# Repo-scoped cache key helper
+# ---------------------------------------------------------------------------
+
+def _repo_key():
+    """Return a short stable hash of the current git root (or cwd as fallback).
+    Used to scope per-repo caches so multiple Claude sessions in different repos
+    don't share branch/drift/files-changed state."""
+    import hashlib
+    try:
+        result = subprocess.run(
+            [_GIT_PATH, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=2,
+        )
+        root = result.stdout.strip() if result.returncode == 0 else os.getcwd()
+    except Exception:
+        root = os.getcwd()
+    return hashlib.sha1(root.encode()).hexdigest()[:8]
+
+
+# ---------------------------------------------------------------------------
 # Hook infrastructure — PostToolUse hook for live refresh
 # ---------------------------------------------------------------------------
 
@@ -1010,10 +1030,11 @@ def _format_elapsed(seconds):
 
 
 def _get_git_branch():
+    rk = _repo_key()
     hook_state = _read_hook_state()
     if hook_state:
-        cached_branch = hook_state.get("git_branch")
-        branch_ts = hook_state.get("git_branch_ts", 0)
+        cached_branch = hook_state.get(f"git_branch_{rk}")
+        branch_ts = hook_state.get(f"git_branch_ts_{rk}", 0)
         if cached_branch is not None and (time.time() - branch_ts) < GIT_BRANCH_CACHE_TTL:
             return cached_branch if cached_branch else None
     try:
@@ -1026,8 +1047,8 @@ def _get_git_branch():
         branch = ""
     try:
         state = hook_state if hook_state else {}
-        state["git_branch"] = branch
-        state["git_branch_ts"] = time.time()
+        state[f"git_branch_{rk}"] = branch
+        state[f"git_branch_ts_{rk}"] = time.time()
         _atomic_json_write(_get_hook_state_path(), state, indent=None)
     except OSError:
         pass
@@ -2781,7 +2802,8 @@ def cmd_stats():
                 f"{BRIGHT_YELLOW}{cost_str:<12}{RESET}{DIM}({tok_str}){RESET}"
             )
 
-        utf8_print(f"    {DIM}{'\u2500' * 33}{RESET}")
+        _rule = "\u2500" * 33
+        utf8_print(f"    {DIM}{_rule}{RESET}")
         total_local = cost_data["total_cost_usd"] * rate
         utf8_print(f"    {'Total:':<{max_name_len + 2}}  {BOLD}{BRIGHT_YELLOW}{currency_sym}{total_local:,.2f}{RESET}")
         utf8_print("")
@@ -3227,7 +3249,7 @@ def cmd_pomodoro(action, minutes=None):
 
 def _check_git_drift():
     state_dir = get_state_dir()
-    drift_cache = state_dir / GIT_DRIFT_FILE
+    drift_cache = state_dir / f"git_drift_{_repo_key()}.json"
     try:
         with open(drift_cache, "r", encoding="utf-8") as f:
             cached = json.load(f)
@@ -3276,7 +3298,7 @@ def _render_git_drift():
 
 def _count_changed_files():
     state_dir = get_state_dir()
-    files_cache = state_dir / FILES_CHANGED_FILE
+    files_cache = state_dir / f"files_changed_{_repo_key()}.json"
     try:
         with open(files_cache, "r", encoding="utf-8") as f:
             cached = json.load(f)
@@ -3373,7 +3395,8 @@ def build_status_line(usage, plan, config=None, stdin_ctx=None, cache_age=None):
         extra = usage.get("extra_usage")
         if extra and extra.get("is_enabled") and not config.get("extra_hidden", False):
             num_bars += 1
-        if stdin_ctx and show.get("context", True):
+        _ctx_fmt = config.get("context_format", "percent")
+        if stdin_ctx and show.get("context", True) and _ctx_fmt != "full":
             num_bars += 1
         # Per-bar overhead: label + space + space + pct + timer ≈ 18 chars
         # Separators between sections: " | " = 3 chars each
@@ -4810,12 +4833,6 @@ def main():
     # when leftover npm @anthropic-ai/claude-code files existed on disk,
     # even after migrating to the native installer.
 
-    # One-time cleanup of legacy hooks from pre-v2.2.0
-    try:
-        _cleanup_hooks()
-    except Exception:
-        pass
-
     raw_stdin = ""
     if not sys.stdin.isatty():
         try:
@@ -4829,16 +4846,20 @@ def main():
     # Merge new data into persisted data so partial updates (e.g. model but
     # no context_pct during thinking) don't wipe previously known fields.
     _STDIN_CTX_KEYS = {"model_name", "context_pct", "context_used", "context_limit", "cost_usd", "worktree_branch", "_rate_limits", "lines_added", "lines_removed"}
+    _STDIN_CTX_TTL = 30  # seconds — expire persisted context after this long
     stdin_ctx_path = get_state_dir() / "stdin_ctx.json"
     persisted = {}
     try:
         with open(str(stdin_ctx_path), "r", encoding="utf-8") as f:
             raw_persisted = json.load(f)
-            persisted = {k: _sanitize(str(v)) if isinstance(v, str) else v for k, v in raw_persisted.items() if k in _STDIN_CTX_KEYS}
+            _age = time.time() - raw_persisted.get("_ts", 0)
+            if _age < _STDIN_CTX_TTL:
+                persisted = {k: _sanitize(str(v)) if isinstance(v, str) else v for k, v in raw_persisted.items() if k in _STDIN_CTX_KEYS}
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     if stdin_ctx:
         persisted.update(stdin_ctx)
+        persisted["_ts"] = time.time()
         try:
             _atomic_json_write(stdin_ctx_path, persisted, indent=None)
         except OSError:
@@ -4853,23 +4874,20 @@ def main():
     # The API is only needed for extra credits and per-model caps (opus/sonnet).
     stdin_rl = stdin_ctx.get("_rate_limits")
     if stdin_rl:
-        # Build a synthetic usage dict from stdin rate limits
-        usage_from_stdin = {}
+        # Seed from full cached usage so no bar disappears when stdin is partial
+        has_model_caps = False
+        if cached and "usage" in cached:
+            usage_from_stdin = dict(cached["usage"])
+            has_model_caps = any(k in usage_from_stdin for k in ("extra_usage", "seven_day_opus", "seven_day_sonnet"))
+            plan_from_cache = cached.get("plan", "")
+        else:
+            usage_from_stdin = {}
+            plan_from_cache = ""
+        # Overlay fresher stdin windows on top
         if "five_hour" in stdin_rl:
             usage_from_stdin["five_hour"] = stdin_rl["five_hour"]
         if "seven_day" in stdin_rl:
             usage_from_stdin["seven_day"] = stdin_rl["seven_day"]
-
-        # Merge with cached API data for extra/opus/sonnet if available
-        has_model_caps = False
-        if cached and "usage" in cached:
-            for key in ("extra_usage", "seven_day_opus", "seven_day_sonnet"):
-                if key in cached["usage"]:
-                    usage_from_stdin[key] = cached["usage"][key]
-                    has_model_caps = True
-            plan_from_cache = cached.get("plan", "")
-        else:
-            plan_from_cache = ""
 
         # If no per-model data cached, fetch from API once to populate it
         if not has_model_caps:
